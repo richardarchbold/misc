@@ -4,7 +4,7 @@ import sys
 sys.path.append('/home/richard/workspace/eamm')
 
 import eamm.backend.database
-
+from datetime import datetime, timedelta
 from optparse import OptionParser
 
 def main():
@@ -23,17 +23,39 @@ def main():
                   sends surveys for meetings that are scheduled and are 30 mins or more
                   passed their end-time. By setting ALL, this time restriction is removed.
                   """, default="DUE")  
+
+    parser.add_option("--update-status", dest="update_status",
+                  help="""YES or NO (default is NO). When this script runs, it normally  does
+                  NOT update the meeting_status to FINISHED, so if you run the script again, it
+                  will act on all the same meetings as it did on it's previous run. By setting
+                  this option to YES, the script will update the status of each meeting to 
+                  FINISHED, so they will not be included in future send_survey runs.
+                  """, default="NO") 
     
     (options, sys.argv) = parser.parse_args()
     
-    sql = """
-    select m.idMeeting, m.idInvite, m.meeting_status, i.title, e.invitee_email_addr
-    from EAMM.Meeting as m INNER JOIN EAMM.Invite as i INNER JOIN EAMM.Invitee as e
-    ON (m.idInvite = i.idInvite and m.idInvite = e.idInvite)
-    where m.meeting_status=%s
-    """
-    sql_args = [options.meeting_status]
+    if options.time_frame == "ALL":
+        sql = """
+        select m.idMeeting, m.idInvite, m.meeting_status, i.title, e.invitee_email_addr
+        from EAMM.Meeting as m INNER JOIN EAMM.Invite as i INNER JOIN EAMM.Invitee as e
+        ON (m.idInvite = i.idInvite and m.idInvite = e.idInvite)
+        where m.meeting_status=%s
+        """
+        sql_args = [options.meeting_status]
+    elif options.time_frame == "DUE":
+        buffer_mins = 15
+        now = datetime.now()
+        new = now - timedelta(minutes=buffer_mins)
+        newdb = new.strftime("%Y-%m-%d %H:%M:%S")
     
+        sql = """
+        select m.idMeeting, m.idInvite, m.meeting_status, i.title, e.invitee_email_addr
+        from EAMM.Meeting as m INNER JOIN EAMM.Invite as i INNER JOIN EAMM.Invitee as e
+        ON (m.idInvite = i.idInvite and m.idInvite = e.idInvite)
+        where m.meeting_status=%s and m.end_time<=%s 
+        """
+        sql_args = [options.meeting_status, newdb]
+        
     db_conn = eamm.backend.database.MyDatabase()
     my_query_results = db_conn.select2(sql, sql_args)
     
